@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard – FaceAttend{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <h1 class="page-heading">Admin Dashboard</h1>
+  <p class="page-sub">Students manage karo, attendance dekho, system settings badlo</p>
+
+  <!-- Stats Row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-val" id="s-students">—</div>
+      <div class="stat-label">Registered Students</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-present">—</div>
+      <div class="stat-label">Aaj Present</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-model">—</div>
+      <div class="stat-label">Model Status</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-date">—</div>
+      <div class="stat-label">Aaj ki Date</div>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('students')">👤 Students</button>
+    <button class="tab-btn" onclick="switchTab('attendance')">📋 Attendance</button>
+    <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
+  </div>
+
+  <!-- TAB: Students -->
+  <div id="tab-students" class="tab-content">
+    <div class="card">
+      <div class="card-head">
+        <span>👤 Registered Students</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="search-input" placeholder="Search naam ya roll..." 
+            oninput="filterStudents()" style="padding:4px 10px;font-size:12px;width:180px;border-radius:6px;border:0.5px solid var(--gray-bdr)"/>
+          <button class="btn-small" onclick="loadStudents()">Refresh</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="students-table">
+          <div class="att-empty" style="padding:2rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Attendance -->
+  <div id="tab-attendance" class="tab-content" style="display:none">
+    <div class="card">
+      <div class="card-head">
+        <span>📋 Aaj ki Attendance</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn-small" onclick="loadAttendance()">Refresh</button>
+          <button class="btn-small" onclick="exportCSV()" style="background:var(--green-l);color:var(--green)">↓ Export CSV</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div id="attendance-table">
+          <div class="att-empty" style="padding:2rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Attendance Override -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head"><span>✏️ Manual Attendance Add</span></div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:0.75rem">
+          Kisi student ki attendance manually mark karo (agar camera fail ho)
+        </p>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+          <div class="form-group" style="margin:0;flex:1;min-width:150px">
+            <label>Roll Number</label>
+            <input type="text" id="manual-roll" placeholder="21CS047" />
+          </div>
+          <button class="btn-primary" style="width:auto;padding:8px 18px" onclick="manualAttendance()">
+            Mark Karo
+          </button>
+        </div>
+        <div id="manual-msg" class="msg-box hidden" style="margin-top:0.75rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Settings -->
+  <div id="tab-settings" class="tab-content" style="display:none">
+    <div class="admin-grid">
+
+      <!-- Model Control -->
+      <div class="card">
+        <div class="card-head"><span>🧠 Model Control</span></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:1rem">
+            Naye students register karne ke baad model retrain karna zaroori hai
+          </p>
+          <button class="btn-primary" onclick="trainModel()">⚙️ Model Retrain Karo</button>
+          <div id="train-msg" class="msg-box hidden" style="margin-top:0.75rem"></div>
+        </div>
+      </div>
+
+      <!-- Confidence Threshold -->
+      <div class="card">
+        <div class="card-head"><span>🎯 Recognition Sensitivity</span></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:0.75rem">
+            Confidence threshold: kam value = zyada matches (lekin galat bhi ho sakta hai)
+          </p>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:0.75rem">
+            <input type="range" id="conf-slider" min="20" max="80" value="45"
+              oninput="updateConfLabel(this.value)"
+              style="flex:1;accent-color:var(--purple)"/>
+            <span id="conf-val" style="font-size:16px;font-weight:500;color:var(--purple);min-width:40px">45%</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:0.75rem">
+            <span>20% (Lenient)</span><span>50% (Balanced)</span><span>80% (Strict)</span>
+          </div>
+          <button class="btn-primary" onclick="saveConfidence()">💾 Save Threshold</button>
+          <div id="conf-msg" class="msg-box hidden" style="margin-top:0.75rem"></div>
+        </div>
+      </div>
+
+      <!-- Camera Settings -->
+      <div class="card">
+        <div class="card-head"><span>📷 Camera Settings</span></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Camera Index (0 = default webcam)</label>
+            <input type="number" id="cam-index" value="0" min="0" max="5"
+              style="padding:8px 10px;border:0.5px solid var(--gray-bdr);border-radius:6px;width:100%;font-size:14px"/>
+          </div>
+          <div class="form-group">
+            <label>Photos per Student (default: 30)</label>
+            <input type="number" id="photo-count" value="30" min="10" max="100"
+              style="padding:8px 10px;border:0.5px solid var(--gray-bdr);border-radius:6px;width:100%;font-size:14px"/>
+          </div>
+          <button class="btn-primary" onclick="saveCameraSettings()">💾 Save Settings</button>
+          <div id="cam-msg" class="msg-box hidden" style="margin-top:0.75rem"></div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="card" style="border-color:#f5c6c6">
+        <div class="card-head" style="background:#fff5f5"><span style="color:var(--red)">⚠️ Danger Zone</span></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:1rem">
+            Ye actions undo nahi ho sakti. Bohot soch samajh ke karo.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:0.6rem">
+            <button class="btn-danger" onclick="confirmAction('reset_model', 'Trained model delete ho jaega. Dobara train karna padega.')">
+              🗑️ Model Reset Karo
+            </button>
+            <button class="btn-danger" onclick="confirmAction('clear_today', 'Aaj ki saari attendance delete ho jaegi.')">
+              🗑️ Aaj ki Attendance Clear Karo
+            </button>
+            <button class="btn-danger btn-danger-hard" onclick="confirmAction('clear_all', 'SAARE students aur unka data permanent delete ho jaega!')">
+              💀 Saara Data Wipe Karo
+            </button>
+          </div>
+          <div id="danger-msg" class="msg-box hidden" style="margin-top:0.75rem"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div id="edit-modal" class="modal-overlay" style="display:none" onclick="closeEditModal(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>✏️ Student Edit Karo</span>
+      <button onclick="document.getElementById('edit-modal').style.display='none'"
+        style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-2)">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id" />
+      <div class="form-group">
+        <label>Poora Naam *</label>
+        <input type="text" id="edit-name" />
+      </div>
+      <div class="form-group">
+        <label>Roll Number *</label>
+        <input type="text" id="edit-roll" />
+      </div>
+      <div class="form-group">
+        <label>Department *</label>
+        <select id="edit-dept">
+          <option>Computer Science (CS)</option>
+          <option>Electronics (EC)</option>
+          <option>Mechanical (ME)</option>
+          <option>Civil (CE)</option>
+        </select>
+      </div>
+      <div id="edit-msg" class="msg-box hidden"></div>
+      <div style="display:flex;gap:0.75rem;margin-top:1rem">
+        <button class="btn-primary" onclick="saveEdit()">💾 Save Karo</button>
+        <button class="btn-secondary" onclick="document.getElementById('edit-modal').style.display='none'">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div id="confirm-modal" class="modal-overlay" style="display:none" onclick="closeConfirmModal(event)">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <span>⚠️ Confirm Karo</span>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-text" style="font-size:14px;margin-bottom:1rem;color:var(--text)"></p>
+      <p style="font-size:13px;color:var(--red);margin-bottom:1.25rem">Ye action undo nahi ho sakti!</p>
+      <div style="display:flex;gap:0.75rem">
+        <button class="btn-danger btn-danger-hard" id="confirm-yes" onclick="executeAction()">Haan, Karo</button>
+        <button class="btn-secondary" onclick="document.getElementById('confirm-modal').style.display='none'">Nahi, Ruko</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .tab-bar { display:flex; gap:4px; margin-bottom:1rem;
+    background:var(--white); padding:4px; border-radius:10px;
+    border:0.5px solid var(--gray-bdr); width:fit-content; }
+  .tab-btn { padding:7px 18px; border:none; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:500; background:none; color:var(--text-2); transition:.15s; }
+  .tab-btn.active { background:var(--purple); color:var(--purple-l); }
+  .tab-btn:hover:not(.active) { background:var(--gray-bg); }
+
+  .manage-table { width:100%; font-size:13px; border-collapse:collapse; }
+  .manage-table th { text-align:left; padding:10px 14px; font-size:11px;
+    color:var(--text-2); background:var(--gray-bg); border-bottom:0.5px solid var(--gray-bdr);
+    font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
+  .manage-table td { padding:10px 14px; border-bottom:0.5px solid var(--gray-bdr); }
+  .manage-table tr:last-child td { border-bottom:none; }
+  .manage-table tr:hover td { background:#fafafa; }
+
+  .action-btns { display:flex; gap:6px; }
+  .btn-edit { background:var(--purple-l); color:var(--purple); border:none;
+    padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer;
+    font-weight:500; transition:.15s; }
+  .btn-edit:hover { background:var(--purple-m); color:#fff; }
+  .btn-remove { background:var(--red-l); color:var(--red); border:none;
+    padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer;
+    font-weight:500; transition:.15s; }
+  .btn-remove:hover { background:var(--red); color:#fff; }
+
+  .btn-danger { background:var(--red-l); color:var(--red); border:0.5px solid #f5c6c6;
+    padding:9px 14px; border-radius:var(--radius); font-size:13px; cursor:pointer;
+    font-weight:500; text-align:left; transition:.15s; width:100%; }
+  .btn-danger:hover { background:#fce0e0; }
+  .btn-danger-hard { background:var(--red); color:#fff !important; border-color:var(--red); }
+  .btn-danger-hard:hover { background:#8a1f1f; }
+
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45);
+    display:flex; align-items:center; justify-content:center; z-index:999; }
+  .modal-box { background:var(--white); border-radius:var(--radius-l);
+    width:90%; max-width:480px; overflow:hidden;
+    box-shadow:0 8px 40px rgba(0,0,0,0.18); }
+  .modal-head { padding:1rem 1.25rem; border-bottom:0.5px solid var(--gray-bdr);
+    font-size:14px; font-weight:500; display:flex; justify-content:space-between; align-items:center; }
+  .modal-body { padding:1.25rem; }
+
+  .student-av { width:32px; height:32px; border-radius:50%;
+    background:var(--purple-l); color:var(--purple);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600; }
+
+  .roll-badge { font-size:11px; background:var(--purple-l); color:var(--purple);
+    padding:2px 8px; border-radius:12px; font-weight:500; font-family:monospace; }
+  .dept-badge { font-size:11px; background:var(--teal-l); color:var(--teal);
+    padding:2px 8px; border-radius:12px; }
+</style>
+
+<script>
+let allStudents = {};
+let pendingAction = '';
+
+// ── Tab switch ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['students','attendance','settings'][i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+  document.getElementById('tab-' + name).style.display = 'block';
+  if (name === 'attendance') loadAttendance();
+}
+
+// ── Status ─────────────────────────────────────────────────────────────────
+async function loadStatus() {
+  const [status, att] = await Promise.all([
+    fetch('/api/status').then(r=>r.json()),
+    fetch('/api/today_attendance').then(r=>r.json())
+  ]);
+  document.getElementById('s-students').textContent = status.students;
+  document.getElementById('s-present').textContent  = att.total;
+  document.getElementById('s-model').textContent    = status.model_trained ? '✅ Trained' : '❌ Nahi';
+  document.getElementById('s-date').textContent     = att.date;
+}
+
+// ── Students table ─────────────────────────────────────────────────────────
+async function loadStudents() {
+  const data = await fetch('/api/students').then(r=>r.json());
+  allStudents = data.students;
+  renderStudents(allStudents);
+}
+
+function renderStudents(students) {
+  const wrap = document.getElementById('students-table');
+  const entries = Object.entries(students);
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="att-empty" style="padding:2rem">Koi student registered nahi hai</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="manage-table">
+      <thead><tr>
+        <th>Student</th><th>Roll</th><th>Department</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${entries.map(([id, s]) => `
+        <tr>
+          <td style="display:flex;align-items:center;gap:10px">
+            <div class="student-av">${initials(s.name)}</div>
+            <span style="font-weight:500">${s.name}</span>
+          </td>
+          <td><span class="roll-badge">${s.roll}</span></td>
+          <td><span class="dept-badge">${s.department}</span></td>
+          <td>
+            <div class="action-btns">
+              <button class="btn-edit" onclick="openEditModal(${id}, '${esc(s.name)}', '${esc(s.roll)}', '${esc(s.department)}')">
+                ✏️ Edit
+              </button>
+              <button class="btn-remove" onclick="removeStudent(${id}, '${esc(s.name)}', '${esc(s.roll)}')">
+                🗑️ Remove
+              </button>
+            </div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function filterStudents() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const filtered = Object.fromEntries(
+    Object.entries(allStudents).filter(([_, s]) =>
+      s.name.toLowerCase().includes(q) || s.roll.toLowerCase().includes(q)
+    )
+  );
+  renderStudents(filtered);
+}
+
+function initials(name) {
+  return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+function esc(s) { return (s||'').replace(/'/g, "\\'"); }
+
+// ── Remove student ─────────────────────────────────────────────────────────
+async function removeStudent(id, name, roll) {
+  if (!confirm(`"${name}" (${roll}) ko permanently delete karna chahte ho?\n\nUnki saari photos aur data delete ho jaegi!`)) return;
+
+  const res  = await fetch('/api/remove_student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label_id: id })
+  });
+  const data = await res.json();
+
+  if (data.success) {
+    loadStudents();
+    loadStatus();
+    showAlert('✅ ' + data.message, 'success');
+  } else {
+    showAlert('❌ ' + data.message, 'error');
+  }
+}
+
+// ── Edit modal ─────────────────────────────────────────────────────────────
+function openEditModal(id, name, roll, dept) {
+  document.getElementById('edit-id').value   = id;
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-roll').value = roll;
+  document.getElementById('edit-dept').value = dept;
+  document.getElementById('edit-msg').className = 'msg-box hidden';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeEditModal(e) {
+  if (e.target.id === 'edit-modal') document.getElementById('edit-modal').style.display = 'none';
+}
+
+async function saveEdit() {
+  const id   = document.getElementById('edit-id').value;
+  const name = document.getElementById('edit-name').value.trim();
+  const roll = document.getElementById('edit-roll').value.trim().toUpperCase();
+  const dept = document.getElementById('edit-dept').value;
+  if (!name || !roll || !dept) {
+    showMsg('edit-msg','⚠️ Saari fields zaroori hain','warn'); return;
+  }
+  const res  = await fetch('/api/update_student', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label_id: parseInt(id), name, roll, department: dept })
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('edit-modal').style.display = 'none';
+    loadStudents(); loadStatus();
+    showAlert('✅ ' + data.message, 'success');
+  } else {
+    showMsg('edit-msg','❌ ' + data.message,'error');
+  }
+}
+
+// ── Attendance tab ─────────────────────────────────────────────────────────
+async function loadAttendance() {
+  const data = await fetch('/api/today_attendance').then(r=>r.json());
+  const wrap = document.getElementById('attendance-table');
+  if (!data.records.length) {
+    wrap.innerHTML = '<div class="att-empty" style="padding:2rem">Abhi tak koi attendance nahi</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="manage-table">
+      <thead><tr><th>Student</th><th>Roll</th><th>Department</th><th>Time</th><th>Confidence</th></tr></thead>
+      <tbody>${data.records.map(r=>`
+        <tr>
+          <td style="display:flex;align-items:center;gap:10px">
+            <div class="student-av">${r.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+            <span style="font-weight:500">${r.name}</span>
+          </td>
+          <td><span class="roll-badge">${r.roll}</span></td>
+          <td><span class="dept-badge">${r.department}</span></td>
+          <td style="color:var(--text-2)">${r.time}</td>
+          <td><span class="badge-conf">${r.confidence}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function manualAttendance() {
+  const roll = document.getElementById('manual-roll').value.trim().toUpperCase();
+  if (!roll) { showMsg('manual-msg','⚠️ Roll number daalo','warn'); return; }
+  const res  = await fetch('/api/manual_attendance', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ roll })
+  });
+  const data = await res.json();
+  showMsg('manual-msg', (data.success?'✅ ':'❌ ') + data.message, data.success ? 'success' : 'error');
+  if (data.success) { loadAttendance(); loadStatus(); }
+}
+
+function exportCSV() { window.open('/api/today_attendance'); }
+
+// ── Settings tab ───────────────────────────────────────────────────────────
+function updateConfLabel(v) {
+  document.getElementById('conf-val').textContent = v + '%';
+}
+
+async function saveConfidence() {
+  const val = parseInt(document.getElementById('conf-slider').value);
+  const res  = await fetch('/api/settings', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ confidence_threshold: val })
+  });
+  const data = await res.json();
+  showMsg('conf-msg', (data.success?'✅ ':'❌ ') + data.message, data.success?'success':'error');
+}
+
+async function saveCameraSettings() {
+  const cam   = parseInt(document.getElementById('cam-index').value);
+  const photos = parseInt(document.getElementById('photo-count').value);
+  const res  = await fetch('/api/settings', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ camera_index: cam, photos_per_student: photos })
+  });
+  const data = await res.json();
+  showMsg('cam-msg', (data.success?'✅ ':'❌ ') + data.message, data.success?'success':'error');
+}
+
+async function trainModel() {
+  const btn = document.querySelector('#tab-settings .btn-primary');
+  showMsg('train-msg','⏳ Model train ho raha hai...','info');
+  const data = await fetch('/api/train', { method:'POST' }).then(r=>r.json());
+  showMsg('train-msg', (data.success?'✅ ':'❌ ') + data.message, data.success?'success':'error');
+  loadStatus();
+}
+
+// ── Danger zone ────────────────────────────────────────────────────────────
+function confirmAction(action, text) {
+  pendingAction = action;
+  document.getElementById('confirm-text').textContent = text;
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+
+function closeConfirmModal(e) {
+  if (e.target.id === 'confirm-modal') document.getElementById('confirm-modal').style.display = 'none';
+}
+
+async function executeAction() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  const res  = await fetch('/api/danger', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action: pendingAction })
+  });
+  const data = await res.json();
+  showMsg('danger-msg', (data.success?'✅ ':'❌ ') + data.message, data.success?'success':'error');
+  loadStudents(); loadStatus(); loadAttendance();
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className   = 'msg-box msg-' + type;
+}
+
+let alertTimer;
+function showAlert(text, type) {
+  // brief toast using danger-msg area visible to user
+  const el = document.createElement('div');
+  el.textContent = text;
+  el.className = 'msg-box msg-' + type;
+  el.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.12);min-width:240px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadStatus();
+loadStudents();
+
+// Load current settings from server if available
+fetch('/api/settings').then(r=>r.json()).then(data => {
+  if (data.confidence_threshold) {
+    document.getElementById('conf-slider').value = data.confidence_threshold;
+    updateConfLabel(data.confidence_threshold);
+  }
+  if (data.camera_index !== undefined)
+    document.getElementById('cam-index').value = data.camera_index;
+  if (data.photos_per_student)
+    document.getElementById('photo-count').value = data.photos_per_student;
+}).catch(()=>{});
+</script>
+{% endblock %}
