@@ -32,6 +32,13 @@ face_cascade  = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_front
 label_map     = {}   # id → { name, roll, department }
 model_trained = False
 
+# ─── System Settings (runtime mein badal sakte hain) ──────────────────────
+settings = {
+    "confidence_threshold": 45,
+    "camera_index": 0,
+    "photos_per_student": 30,
+}
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def load_label_map():
@@ -124,7 +131,7 @@ def generate_frames():
                 student = label_map.get(label_id, {})
                 name    = student.get("name", "Unknown")
 
-                if confidence >= 45:
+                if confidence >= settings["confidence_threshold"]:
                     color = (34, 180, 100)   # green → match
                     text  = f"{name}  {confidence:.0f}%"
                 else:
@@ -302,7 +309,7 @@ def api_mark_attendance():
     label_id, raw_dist = recognizer.predict(roi)
     confidence = max(0, 100 - raw_dist)
 
-    if confidence < 45:
+    if confidence < settings["confidence_threshold"]:
         return jsonify({"success": False,
                         "message": f"Pehchaan nahi hua ({confidence:.0f}% confidence). Phir try karo."}), 401
 
@@ -350,6 +357,134 @@ def api_status():
         "students":      len(label_map),
         "camera_ok":     True,
     })
+
+# ─── API: Student remove karo ─────────────────────────────────────────────
+
+@app.route("/api/remove_student", methods=["POST"])
+def api_remove_student():
+    """Student ko label_map se aur uski photos ko bhi delete karo"""
+    data     = request.json
+    label_id = int(data.get("label_id", -1))
+
+    if label_id not in label_map:
+        return jsonify({"success": False, "message": "Student nahi mila"}), 404
+
+    student = label_map.pop(label_id)
+    save_label_map()
+
+    # Photos bhi delete karo
+    import shutil
+    student_dir = os.path.join(DATASET_DIR, student["roll"])
+    if os.path.exists(student_dir):
+        shutil.rmtree(student_dir)
+
+    return jsonify({"success": True,
+                    "message": f"{student['name']} delete ho gaya. Model dobara train karo."})
+
+# ─── API: Student details update karo ────────────────────────────────────
+
+@app.route("/api/update_student", methods=["POST"])
+def api_update_student():
+    """Student ka naam, roll ya department update karo"""
+    data     = request.json
+    label_id = int(data.get("label_id", -1))
+
+    if label_id not in label_map:
+        return jsonify({"success": False, "message": "Student nahi mila"}), 404
+
+    old_roll = label_map[label_id]["roll"]
+    new_roll = data.get("roll", "").strip().upper()
+
+    # Duplicate roll check (apne aap ko chodke)
+    for lid, v in label_map.items():
+        if lid != label_id and v.get("roll") == new_roll:
+            return jsonify({"success": False, "message": f"{new_roll} already kisi aur student ka hai"}), 409
+
+    # Agar roll badla toh folder rename karo
+    if old_roll != new_roll:
+        old_dir = os.path.join(DATASET_DIR, old_roll)
+        new_dir = os.path.join(DATASET_DIR, new_roll)
+        if os.path.exists(old_dir):
+            os.rename(old_dir, new_dir)
+
+    label_map[label_id].update({
+        "name":       data.get("name", "").strip(),
+        "roll":       new_roll,
+        "department": data.get("department", "").strip(),
+    })
+    save_label_map()
+
+    return jsonify({"success": True, "message": f"Student details update ho gayi!"})
+
+# ─── API: Manual attendance ───────────────────────────────────────────────
+
+@app.route("/api/manual_attendance", methods=["POST"])
+def api_manual_attendance():
+    """Roll number se manually attendance mark karo"""
+    roll = request.json.get("roll", "").strip().upper()
+    student = next((v for v in label_map.values() if v["roll"] == roll), None)
+    if not student:
+        return jsonify({"success": False, "message": f"{roll} registered nahi hai"}), 404
+
+    if already_marked(roll):
+        return jsonify({"success": False,
+                        "message": f"{student['name']} ki attendance aaj pehle se mark hai"}), 409
+
+    save_attendance(student["name"], roll, student["department"], 100.0)
+    return jsonify({"success": True,
+                    "message": f"{student['name']} ki attendance manually mark ho gayi!"})
+
+# ─── API: Settings get/set ────────────────────────────────────────────────
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "GET":
+        return jsonify({"success": True, **settings})
+
+    data = request.json
+    if "confidence_threshold" in data:
+        val = int(data["confidence_threshold"])
+        settings["confidence_threshold"] = max(20, min(80, val))
+    if "camera_index" in data:
+        settings["camera_index"] = int(data["camera_index"])
+    if "photos_per_student" in data:
+        settings["photos_per_student"] = int(data["photos_per_student"])
+
+    return jsonify({"success": True, "message": "Settings save ho gayi!", **settings})
+
+# ─── API: Danger zone actions ─────────────────────────────────────────────
+
+@app.route("/api/danger", methods=["POST"])
+def api_danger():
+    import shutil
+    action = request.json.get("action", "")
+
+    if action == "reset_model":
+        global model_trained
+        if os.path.exists(MODEL_FILE):
+            os.remove(MODEL_FILE)
+        model_trained = False
+        return jsonify({"success": True, "message": "Model delete ho gaya. Dobara train karo."})
+
+    elif action == "clear_today":
+        csv_path = get_today_csv()
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+        return jsonify({"success": True, "message": "Aaj ki attendance clear ho gayi."})
+
+    elif action == "clear_all":
+        global label_map
+        label_map = {}
+        save_label_map()
+        if os.path.exists(DATASET_DIR):
+            shutil.rmtree(DATASET_DIR)
+            os.makedirs(DATASET_DIR, exist_ok=True)
+        if os.path.exists(MODEL_FILE):
+            os.remove(MODEL_FILE)
+        model_trained = False
+        return jsonify({"success": True, "message": "Saara data wipe ho gaya!"})
+
+    return jsonify({"success": False, "message": "Unknown action"}), 400
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 
