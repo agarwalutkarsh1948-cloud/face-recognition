@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Attendance Mark Karo – FaceAttend{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <h1 class="page-heading">Apni Attendance Mark Karo</h1>
+  <p class="page-sub">Camera ke saamne baithein aur neeche button dabayein</p>
+
+  <div class="att-grid">
+    <!-- Camera -->
+    <div class="card">
+      <div class="card-head">
+        <span>&#128247; Live Camera Feed</span>
+        <span class="badge-live"><span class="live-dot"></span> LIVE</span>
+      </div>
+      <div class="card-body">
+        <div class="cam-wrapper">
+          <img src="/video_feed" class="cam-stream" alt="Live camera" />
+        </div>
+        <div class="status-row" id="cam-status-row">
+          <span id="cam-status-text">Camera chal raha hai...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action panel -->
+    <div class="card">
+      <div class="card-head"><span>&#10003; Attendance</span></div>
+      <div class="card-body">
+
+        <div class="result-box hidden" id="result-box">
+          <div class="result-avatar" id="result-avatar">?</div>
+          <div class="result-info">
+            <div class="result-name" id="result-name">—</div>
+            <div class="result-meta" id="result-meta">—</div>
+          </div>
+          <div class="result-badge" id="result-badge">—</div>
+        </div>
+
+        <div class="conf-bar-wrap" id="conf-wrap" style="display:none">
+          <div class="conf-label">
+            <span>Confidence</span><span id="conf-pct">0%</span>
+          </div>
+          <div class="conf-track"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+        </div>
+
+        <button class="btn-primary" id="mark-btn" onclick="markAttendance()">
+          Attendance Mark Karo
+        </button>
+        <p class="hint-text">&#9432; Camera ke bilkul saamne baithein, roshni achhi ho</p>
+
+        <div class="divider"></div>
+
+        <div class="today-stats">
+          <div class="stat-mini">
+            <div class="stat-mini-val" id="stat-present">—</div>
+            <div class="stat-mini-label">Aaj Present</div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-val" id="stat-date">—</div>
+            <div class="stat-mini-label">Date</div>
+          </div>
+        </div>
+
+        <div class="att-list" id="att-list">
+          <div class="att-list-head">Aaj ki Attendance</div>
+          <div id="att-rows">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function markAttendance() {
+  const btn = document.getElementById('mark-btn');
+  btn.disabled = true;
+  btn.textContent = 'Pehchaan ho rahi hai...';
+  setStatus('Aapka chehra scan ho raha hai...', 'info');
+
+  try {
+    const res  = await fetch('/api/mark_attendance', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.success) {
+      showResult(data.name, data.roll + ' · ' + data.department,
+                 data.confidence + '%', 'present',
+                 data.name.split(' ').map(w=>w[0]).join('').slice(0,2));
+      setConfBar(data.confidence);
+      setStatus('✅ ' + data.message, 'success');
+    } else if (data.already) {
+      setStatus('⚠️ ' + data.message, 'warn');
+      showResult(data.name, data.roll, '—', 'already',
+                 data.name.split(' ').map(w=>w[0]).join('').slice(0,2));
+    } else {
+      setStatus('❌ ' + data.message, 'error');
+    }
+  } catch(e) {
+    setStatus('❌ Server se connect nahi ho paya', 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Dobara Try Karo';
+  loadTodayAttendance();
+}
+
+function showResult(name, meta, badge, type, initials) {
+  document.getElementById('result-box').classList.remove('hidden');
+  document.getElementById('result-avatar').textContent = initials || '?';
+  document.getElementById('result-name').textContent   = name;
+  document.getElementById('result-meta').textContent   = meta;
+  const b = document.getElementById('result-badge');
+  b.textContent  = badge;
+  b.className    = 'result-badge badge-' + type;
+  document.getElementById('conf-wrap').style.display = 'block';
+}
+
+function setConfBar(pct) {
+  const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+  document.getElementById('conf-fill').style.width = clamped + '%';
+  document.getElementById('conf-pct').textContent  = clamped + '%';
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('cam-status-text');
+  el.textContent  = msg;
+  el.className    = 'status-' + type;
+}
+
+async function loadTodayAttendance() {
+  const res  = await fetch('/api/today_attendance');
+  const data = await res.json();
+  document.getElementById('stat-present').textContent = data.total;
+  document.getElementById('stat-date').textContent    = data.date;
+
+  const rows = document.getElementById('att-rows');
+  if (data.records.length === 0) {
+    rows.innerHTML = '<div class="att-empty">Abhi tak koi nahi</div>';
+    return;
+  }
+  rows.innerHTML = data.records.reverse().map(r => `
+    <div class="att-row">
+      <div class="att-av">${r.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+      <div class="att-info"><div class="att-name">${r.name}</div>
+        <div class="att-roll">${r.roll} · ${r.department}</div></div>
+      <div class="att-time">${r.time}</div>
+    </div>`).join('');
+}
+
+loadTodayAttendance();
+</script>
+{% endblock %}

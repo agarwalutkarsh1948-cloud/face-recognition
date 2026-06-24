@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}FaceAttend – Smart Attendance System{% endblock %}
+
+{% block content %}
+<div class="home-hero">
+  <div class="hero-icon">&#9651;</div>
+  <h1>FaceAttend</h1>
+  <p>AI-powered face recognition se automatic attendance — koi proxy nahi, koi manual entry nahi</p>
+  <div class="hero-btns">
+    <a href="/attendance" class="btn-primary">Attendance Mark Karo</a>
+    <a href="/register" class="btn-secondary">Naya Student Register</a>
+  </div>
+</div>
+
+<div class="features-grid">
+  <div class="feature-card">
+    <div class="feat-icon">&#128247;</div>
+    <h3>Real-time Detection</h3>
+    <p>OpenCV se live camera feed mein chehra dhundhta hai milliseconds mein</p>
+  </div>
+  <div class="feature-card">
+    <div class="feat-icon">&#129504;</div>
+    <h3>AI Recognition</h3>
+    <p>LBPH algorithm se student ki pehchaan — 95%+ accuracy</p>
+  </div>
+  <div class="feature-card">
+    <div class="feat-icon">&#128203;</div>
+    <h3>Auto CSV Save</h3>
+    <p>Har din ki attendance alag CSV file mein automatically save hoti hai</p>
+  </div>
+  <div class="feature-card">
+    <div class="feat-icon">&#128274;</div>
+    <h3>Proxy Blocked</h3>
+    <p>Sirf asli chehra kaam karega — duplicate entry bhi rok di jaati hai</p>
+  </div>
+</div>
+
+<div class="flow-section">
+  <h2>Kaise kaam karta hai?</h2>
+  <div class="flow-steps">
+    <div class="flow-step"><div class="step-num">1</div><div>Student register + 30 photos capture</div></div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-step"><div class="step-num">2</div><div>AI model train hota hai</div></div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-step"><div class="step-num">3</div><div>Camera se chehra scan</div></div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-step"><div class="step-num">4</div><div>Attendance CSV mein save</div></div>
+  </div>
+</div>
+{% endblock %}

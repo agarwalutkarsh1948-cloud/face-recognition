@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard – FaceAttend{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <h1 class="page-heading">Admin Dashboard</h1>
+  <p class="page-sub">Saare students aur attendance records yahan dekhein</p>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-val" id="s-students">—</div>
+      <div class="stat-label">Registered Students</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-present">—</div>
+      <div class="stat-label">Aaj Present</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-model">—</div>
+      <div class="stat-label">Model Status</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="s-date">—</div>
+      <div class="stat-label">Aaj ki Date</div>
+    </div>
+  </div>
+
+  <div class="admin-grid">
+    <div class="card">
+      <div class="card-head">
+        <span>&#128100; Registered Students</span>
+        <button class="btn-small" onclick="loadStudents()">Refresh</button>
+      </div>
+      <div class="card-body">
+        <div id="students-table">Loading...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <span>&#128203; Aaj ki Attendance</span>
+        <button class="btn-small" onclick="loadAttendance()">Refresh</button>
+      </div>
+      <div class="card-body">
+        <div id="attendance-table">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1rem">
+    <div class="card-head"><span>&#9881; Actions</span></div>
+    <div class="card-body" style="display:flex;gap:1rem;flex-wrap:wrap">
+      <button class="btn-primary" onclick="trainModel()">&#9881; Model Retrain Karo</button>
+      <button class="btn-secondary" onclick="exportCSV()">&#8595; CSV Export</button>
+    </div>
+    <div id="action-msg" class="msg-box hidden" style="margin:0 1rem 1rem"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStatus() {
+  const [status, att] = await Promise.all([
+    fetch('/api/status').then(r=>r.json()),
+    fetch('/api/today_attendance').then(r=>r.json())
+  ]);
+  document.getElementById('s-students').textContent = status.students;
+  document.getElementById('s-present').textContent  = att.total;
+  document.getElementById('s-model').textContent    = status.model_trained ? '✅ Trained' : '❌ Nahi';
+  document.getElementById('s-date').textContent     = att.date;
+}
+
+async function loadStudents() {
+  const data = await fetch('/api/students').then(r=>r.json());
+  const wrap = document.getElementById('students-table');
+  if (!Object.keys(data.students).length) {
+    wrap.innerHTML = '<div class="att-empty">Koi student registered nahi</div>'; return;
+  }
+  wrap.innerHTML = `<table class="data-table">
+    <thead><tr><th>#</th><th>Naam</th><th>Roll</th><th>Department</th></tr></thead>
+    <tbody>${Object.entries(data.students).map(([id,s])=>`
+      <tr><td>${id}</td><td>${s.name}</td><td>${s.roll}</td><td>${s.department}</td></tr>
+    `).join('')}</tbody></table>`;
+}
+
+async function loadAttendance() {
+  const data = await fetch('/api/today_attendance').then(r=>r.json());
+  const wrap = document.getElementById('attendance-table');
+  if (!data.records.length) {
+    wrap.innerHTML = '<div class="att-empty">Abhi tak koi attendance nahi</div>'; return;
+  }
+  wrap.innerHTML = `<table class="data-table">
+    <thead><tr><th>Naam</th><th>Roll</th><th>Time</th><th>Confidence</th></tr></thead>
+    <tbody>${data.records.map(r=>`
+      <tr><td>${r.name}</td><td>${r.roll}</td><td>${r.time}</td>
+          <td><span class="badge-conf">${r.confidence}</span></td></tr>
+    `).join('')}</tbody></table>`;
+}
+
+async function trainModel() {
+  const msg = document.getElementById('action-msg');
+  msg.textContent = '⏳ Training...'; msg.className = 'msg-box msg-info';
+  const data = await fetch('/api/train', { method:'POST' }).then(r=>r.json());
+  msg.textContent = (data.success ? '✅ ' : '❌ ') + data.message;
+  msg.className   = 'msg-box msg-' + (data.success ? 'success' : 'error');
+  loadStatus();
+}
+
+function exportCSV() {
+  window.open('/api/today_attendance');
+}
+
+loadStatus(); loadStudents(); loadAttendance();
+</script>
+{% endblock %}

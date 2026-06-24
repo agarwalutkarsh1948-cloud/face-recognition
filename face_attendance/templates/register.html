@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Student Register – FaceAttend{% endblock %}
+
+{% block content %}
+<div class="page-wrapper" style="max-width:640px">
+  <h1 class="page-heading">Naya Student Register Karo</h1>
+  <p class="page-sub">Details bharo, phir Auto-Capture start karo</p>
+
+  <div class="card">
+    <div class="card-head"><span>&#128100; Student Details</span></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>Poora Naam *</label>
+        <input type="text" id="f-name" placeholder="Jaise: Priya Sharma" />
+      </div>
+      <div class="form-group">
+        <label>Roll Number *</label>
+        <input type="text" id="f-roll" placeholder="Jaise: 21CS047" />
+      </div>
+      <div class="form-group">
+        <label>Department *</label>
+        <select id="f-dept">
+          <option value="">— Select karo —</option>
+          <option>Computer Science (CS)</option>
+          <option>Electronics (EC)</option>
+          <option>Mechanical (ME)</option>
+          <option>Civil (CE)</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="reg-btn" onclick="registerStudent()">
+        Register Karo
+      </button>
+      <div id="reg-msg" class="msg-box hidden"></div>
+    </div>
+  </div>
+
+  <div class="card" id="capture-card" style="display:none; margin-top:1rem">
+    <div class="card-head">
+      <span>&#128247; Auto Face Capture</span>
+      <span id="cap-counter" class="badge-info">0 / 30</span>
+    </div>
+    <div class="card-body">
+      <div class="cam-wrapper" style="margin-bottom:1rem; position:relative;">
+        <img src="/video_feed" class="cam-stream" alt="Camera" />
+        <div id="countdown-overlay" style="
+          display:none; position:absolute; inset:0;
+          background:rgba(0,0,0,0.55);
+          align-items:center; justify-content:center; flex-direction:column;
+          color:#fff; font-size:48px; font-weight:500; border-radius:8px;">
+          <div id="countdown-num">3</div>
+          <div style="font-size:14px; margin-top:6px;">Seedha camera dekhein!</div>
+        </div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-track" style="height:10px;">
+          <div class="progress-fill" id="cap-progress" style="width:0%; transition:width 0.3s;"></div>
+        </div>
+      </div>
+
+      <div id="cap-status" class="msg-box msg-info" style="margin-top:0.75rem">
+        Taiyaar hain? Neeche "Auto Capture Start" dabao — 30 photos khud-ba-khud le lega!
+      </div>
+
+      <div style="display:flex; gap:0.75rem; margin-top:1rem">
+        <button class="btn-primary" id="auto-btn" onclick="startAutoCapture()">
+          &#9654; Auto Capture Start (30 photos)
+        </button>
+        <button class="btn-secondary" id="stop-btn" onclick="stopCapture()" style="display:none;">
+          &#9646;&#9646; Rok Do
+        </button>
+        <button class="btn-secondary" id="train-btn" onclick="trainModel()" disabled>
+          &#9881; Model Train Karo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRoll = '';
+let photoCount  = 0;
+let capturing   = false;
+let captureTimer = null;
+const TOTAL_PHOTOS = 30;
+const DELAY_MS     = 600;  // har photo ke beech ka gap (ms)
+
+async function registerStudent() {
+  const name = document.getElementById('f-name').value.trim();
+  const roll = document.getElementById('f-roll').value.trim();
+  const dept = document.getElementById('f-dept').value;
+  if (!name || !roll || !dept) {
+    showMsg('reg-msg', '⚠️ Saari fields bharna zaroori hai', 'warn'); return;
+  }
+  document.getElementById('reg-btn').disabled = true;
+  const res  = await fetch('/api/register', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name, roll, department: dept })
+  });
+  const data = await res.json();
+  if (data.success) {
+    currentRoll = roll.toUpperCase();
+    photoCount  = 0;
+    showMsg('reg-msg', '✅ ' + data.message, 'success');
+    document.getElementById('capture-card').style.display = 'block';
+    updateCapCounter();
+  } else {
+    showMsg('reg-msg', '❌ ' + data.message, 'error');
+    document.getElementById('reg-btn').disabled = false;
+  }
+}
+
+function startAutoCapture() {
+  if (!currentRoll || capturing) return;
+
+  // 3 second countdown
+  const overlay = document.getElementById('countdown-overlay');
+  const numEl   = document.getElementById('countdown-num');
+  overlay.style.display = 'flex';
+  let count = 3;
+  numEl.textContent = count;
+
+  const cd = setInterval(() => {
+    count--;
+    if (count <= 0) {
+      clearInterval(cd);
+      overlay.style.display = 'none';
+      beginCapturing();
+    } else {
+      numEl.textContent = count;
+    }
+  }, 1000);
+}
+
+function beginCapturing() {
+  capturing = true;
+  document.getElementById('auto-btn').style.display = 'none';
+  document.getElementById('stop-btn').style.display = 'block';
+  document.getElementById('train-btn').disabled = true;
+  captureNext();
+}
+
+async function captureNext() {
+  if (!capturing || photoCount >= TOTAL_PHOTOS) return;
+
+  showMsg('cap-status', '📸 Photo ' + (photoCount+1) + ' / ' + TOTAL_PHOTOS + ' le raha hai...', 'info');
+
+  try {
+    const res  = await fetch('/api/capture', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ roll: currentRoll, photo_count: photoCount })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      photoCount = data.saved;
+      updateCapCounter();
+
+      if (photoCount >= TOTAL_PHOTOS) {
+        doneCapturing();
+        return;
+      }
+    } else {
+      // Chehra nahi mila — retry karo bina count badhaye
+      showMsg('cap-status', '⚠️ ' + data.message + ' — dobara try ho raha hai...', 'warn');
+    }
+  } catch(e) {
+    showMsg('cap-status', '❌ Network error — retry ho raha hai...', 'error');
+  }
+
+  if (capturing) {
+    captureTimer = setTimeout(captureNext, DELAY_MS);
+  }
+}
+
+function stopCapture() {
+  capturing = false;
+  clearTimeout(captureTimer);
+  document.getElementById('auto-btn').style.display = 'block';
+  document.getElementById('auto-btn').textContent = '▶ Dobara Start (' + photoCount + '/30 se)';
+  document.getElementById('stop-btn').style.display = 'none';
+  showMsg('cap-status', '⏸ Ruk gaya — ' + photoCount + ' photos li gayi hain. Dobara start kar sakte ho.', 'warn');
+  if (photoCount >= 10) {
+    document.getElementById('train-btn').disabled = false;
+  }
+}
+
+function doneCapturing() {
+  capturing = false;
+  document.getElementById('auto-btn').style.display = 'none';
+  document.getElementById('stop-btn').style.display = 'none';
+  document.getElementById('train-btn').disabled = false;
+  showMsg('cap-status', '🎉 30 photos complete! Ab "Model Train Karo" dabao.', 'success');
+}
+
+async function trainModel() {
+  document.getElementById('train-btn').disabled = true;
+  document.getElementById('train-btn').textContent = '⏳ Training...';
+  showMsg('cap-status', '⏳ Model train ho raha hai, 10-20 second ruko...', 'info');
+  const res  = await fetch('/api/train', { method:'POST' });
+  const data = await res.json();
+  if (data.success) {
+    showMsg('cap-status', '✅ ' + data.message + ' — Ab Attendance page pe jao!', 'success');
+    document.getElementById('train-btn').textContent = '✅ Training Done!';
+    document.getElementById('train-btn').style.background = '#3B6D11';
+    document.getElementById('train-btn').style.color = '#EAF3DE';
+    document.getElementById('train-btn').style.border = 'none';
+  } else {
+    showMsg('cap-status', '❌ ' + data.message, 'error');
+    document.getElementById('train-btn').disabled = false;
+    document.getElementById('train-btn').textContent = '⚙️ Dobara Train Karo';
+  }
+}
+
+function updateCapCounter() {
+  const pct = Math.round((photoCount / TOTAL_PHOTOS) * 100);
+  document.getElementById('cap-counter').textContent = photoCount + ' / ' + TOTAL_PHOTOS;
+  document.getElementById('cap-progress').style.width = pct + '%';
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className   = 'msg-box msg-' + type;
+}
+</script>
+{% endblock %}
