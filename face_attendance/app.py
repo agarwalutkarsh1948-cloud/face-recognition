@@ -57,9 +57,17 @@ def load_model():
     """Agar trained model hai toh load karo"""
     global model_trained
     if os.path.exists(MODEL_FILE):
-        recognizer.read(MODEL_FILE)
-        load_label_map()
-        model_trained = True
+        try:
+            recognizer.read(MODEL_FILE)
+            load_label_map()
+            model_trained = True
+        except Exception as e:
+            print(f"Model load error: {e}. Removing corrupted file.")
+            try:
+                os.remove(MODEL_FILE)
+            except Exception:
+                pass
+            model_trained = False
 
 def get_camera():
     global camera
@@ -490,5 +498,5 @@ def api_danger():
 
 if __name__ == "__main__":
     load_model()
-    print("\n✅  FaceAttend server chal raha hai → http://127.0.0.1:5000\n")
+    print("\n[OK] FaceAttend server chal raha hai -> http://127.0.0.1:5000\n")
     app.run(debug=True, threaded=True)
